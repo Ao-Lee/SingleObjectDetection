@@ -1,0 +1,3 @@
+this dataset folder is an example of how training set looks.
+note that the 'landmark' folder is used to generate landmark examples for the network, since MTCNN support landmark localization
+if you don't have a landmark training dataset, just use this 'landmark' folder as the default, the content in the 'landmark' folder wont affect the network at all

@@ -1,0 +1,2 @@
+model_checkpoint_path: "F:\\Dropbox\\DataScience\\Project\\MTCNN-TF-Vehicle\\models\\rnet\\rnet-18"
+all_model_checkpoint_paths: "F:\\Dropbox\\DataScience\\Project\\MTCNN-TF-Vehicle\\models\\rnet\\rnet-18"
