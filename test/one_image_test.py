@@ -16,7 +16,7 @@ def Test(path_detection_labels, path_detection_imgs, path_models, mod='one', siz
     images = []
     with open(path_detection_labels, 'r') as f:
         annotations = f.readlines()
-        
+
     indices = np.random.permutation(np.arange(len(annotations)))
     indices = indices[:size]
 
@@ -65,11 +65,24 @@ def Test_CrowdAI():
     
 def Test_HighWay():
     path_detection_labels, path_detection_imgs, path_models = GetHighWayPath()
-    Test(path_detection_labels, path_detection_imgs, path_models, mod='one')
+    Test(path_detection_labels, path_detection_imgs, path_models, mod='multi')
     
 
 if __name__=='__main__':
-    Test_CrowdAI()
-    Test_HighWay()
+    #Test_CrowdAI()
+    #Test_HighWay()
+    path_detection_labels, path_detection_imgs, path_models = GetCrowdAIPath()
     
+    detector = GetDetector(model_path=path_models)
+    images = []
+    with open(path_detection_labels, 'r') as f:
+        annotations = f.readlines()
+
+    content = annotations[0].strip().split(sep=' ')
+    path_img = join(path_detection_imgs, content[0])
+    img = cv2.imread(path_img)
+    bboxes = content[1:]
+    bboxes = np.array(bboxes, dtype=np.int).reshape(-1, 4)
+    bboxes_pred, landmarks_pred = detector.detect(img)
     
+

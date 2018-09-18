@@ -34,6 +34,18 @@ def GetHighWayPath():
     path_detection_imgs = join(cfg.path_code, path_detection_imgs)
     path_models = join(cfg.path_code, path_models)
     return path_detection_labels, path_detection_imgs, path_models
+    
+    
+def GetTestingPath():
+    path_detection_labels = 'E:\\DM\\MTCNN\\PCD\\Test\\anno_detection.txt'
+    path_detection_imgs = 'E:\\DM\\MTCNN\\PCD\\Test\\imgs'
+    path_models = 'test\\PreTrainedModels\\HighWay'
+    
+    path_detection_labels = join(cfg.path_code, path_detection_labels)
+    path_detection_imgs = join(cfg.path_code, path_detection_imgs)
+    path_models = join(cfg.path_code, path_models)
+    return path_detection_labels, path_detection_imgs, path_models
+    
   
 def Compute_AP_CrowdAI():
     path_detection_labels, path_detection_imgs, path_models = GetCrowdAIPath()
@@ -43,6 +55,11 @@ def Compute_AP_HighWay():
     path_detection_labels, path_detection_imgs, path_models = GetHighWayPath()
     Test(path_detection_labels, path_detection_imgs, path_models)
     
+def Compute_AP_Testing():
+    path_detection_labels, path_detection_imgs, path_models = GetTestingPath()
+    Test(path_detection_labels, path_detection_imgs, path_models)
+       
 if __name__=='__main__':
-    Compute_AP_CrowdAI()
-    Compute_AP_HighWay()
+    #Compute_AP_CrowdAI()
+    #Compute_AP_HighWay()
+    Compute_AP_Testing()

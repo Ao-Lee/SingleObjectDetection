@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from .nms import py_nms
-from tqdm import tqdm
 
 class MtcnnDetector(object):
     def __init__(self,
@@ -61,66 +60,15 @@ class MtcnnDetector(object):
         -------
             bboxes after refinement
         """
-
-        bbox_c = bbox.copy()
         w = bbox[:, 2] - bbox[:, 0] + 1
         w = np.expand_dims(w, 1)
         h = bbox[:, 3] - bbox[:, 1] + 1
         h = np.expand_dims(h, 1)
         reg_m = np.hstack([w, h, w, h])
         aug = reg_m * reg
-        bbox_c[:, 0:4] = bbox_c[:, 0:4] + aug
-        return bbox_c
-
-    def generate_bbox(self, cls_map, reg, scale, threshold):
-        """
-            generate bbox from feature cls_map
-        Parameters:
-        ----------
-            cls_map: numpy array , n x m (m=1, n=1 for Pnet) 
-                detect score for each position
-            reg: numpy array , n x m x 4 (m=1, n=1 for Pnet) 
-                bbox
-            scale: float number
-                scale of this detection
-            threshold: float number
-                detect threshold
-        Returns:
-        -------
-            bbox array
-        """
-        stride = 2
-        cellsize = 12
-
-
-        t_index = np.where(cls_map > threshold)
-
-        # find nothing
-        if t_index[0].size == 0:
-            return np.array([])
-        #offset
-        dx1, dy1, dx2, dy2 = [reg[t_index[0], t_index[1], i] for i in range(4)]
-
-        reg = np.array([dx1, dy1, dx2, dy2])
-        score = cls_map[t_index[0], t_index[1]]
-        boundingbox = np.vstack([np.round((stride * t_index[1]) / scale),
-                                 np.round((stride * t_index[0]) / scale),
-                                 np.round((stride * t_index[1] + cellsize) / scale),
-                                 np.round((stride * t_index[0] + cellsize) / scale),
-                                 score,
-                                 reg])
-
-        return boundingbox.T
-    #pre-process images
-    def processed_image(self, img, scale):
-        height, width, channels = img.shape
-        new_height = int(height * scale)  # resized new height
-        new_width = int(width * scale)  # resized new width
-        new_dim = (new_width, new_height)
-        img_resized = cv2.resize(img, new_dim, interpolation=cv2.INTER_LINEAR)  # resized image
-        img_resized = (img_resized - 127.5) / 128
-        return img_resized
-
+        bbox[:, 0:4] = bbox[:, 0:4] + aug
+        return bbox
+        
     def pad(self, bboxes, w, h):
         """
             pad the the bboxes, alse restrict the size of it
@@ -173,89 +121,109 @@ class MtcnnDetector(object):
         return_list = [item.astype(np.int32) for item in return_list]
 
         return return_list
-    
-    def detect_pnet(self, im):
-        """Get face candidates through pnet
-
+        
+    def generate_bbox(self, cls_map, reg, scale, threshold):
+        """
+            generate bbox from feature cls_map
         Parameters:
         ----------
-        im: numpy array
-            input image array
-
+            cls_map: numpy array , n x m (m=1, n=1 for Pnet) 
+                detect score for each position
+            reg: numpy array , n x m x 4 (m=1, n=1 for Pnet) 
+                bbox
+            scale: float number
+                scale of this detection
+            threshold: float number
+                detect threshold
         Returns:
         -------
-        boxes: numpy array
-            detected boxes before calibration
-        boxes_c: numpy array
-            boxes after calibration
+            bbox array
         """
+        stride = 2
+        cellsize = 12
+
+
+        t_index = np.where(cls_map > threshold)
+
+        # find nothing
+        if t_index[0].size == 0:
+            return np.array([])
+        #offset
+        dx1, dy1, dx2, dy2 = [reg[t_index[0], t_index[1], i] for i in range(4)]
+
+        reg = np.array([dx1, dy1, dx2, dy2])
+        score = cls_map[t_index[0], t_index[1]]
+        boundingbox = np.vstack([np.round((stride * t_index[1]) / scale),
+                                 np.round((stride * t_index[0]) / scale),
+                                 np.round((stride * t_index[1] + cellsize) / scale),
+                                 np.round((stride * t_index[0] + cellsize) / scale),
+                                 score,
+                                 reg])
+
+        return boundingbox.T
+    #pre-process images
+    def processed_image(self, img, scale):
+        height, width, channels = img.shape
+        new_height = int(height * scale)  # resized new height
+        new_width = int(width * scale)  # resized new width
+        new_dim = (new_width, new_height)
+        img_resized = cv2.resize(img, new_dim, interpolation=cv2.INTER_LINEAR)  # resized image
+        img_resized = (img_resized - 127.5) / 128
+        return img_resized
+
+
+    # im shape (H, W, 3)
+    # total_boxes shape (K, 5)
+    def detect_pnet(self, im):
         h, w, c = im.shape
         net_size = 12
-        
-        current_scale = float(net_size) / self.min_face_size  # find initial scale
-        # print("current_scale", net_size, self.min_face_size, current_scale)
+        current_scale = float(net_size) / self.min_face_size  
         im_resized = self.processed_image(im, current_scale)
         current_height, current_width, _ = im_resized.shape
-        # fcn
-        all_boxes = []
+        total_boxes = []
+
         while min(current_height, current_width) > net_size:
 
-            '''
-            cls_cls_map    (1, 1, 2)
-            reg            (1, 1, 4)
-            '''
-            cls_cls_map, reg = self.pnet_detector.predict(im_resized)
+            # im_resized        shape(W, H, 3)
+            # prob              shape(W', H', 2)
+            # reg               shape(W', H', 4)
+            prob, reg = self.pnet_detector.predict(im_resized)
+          
             #boxes: num*9(x1,y1,x2,y2,score,x1_offset,y1_offset,x2_offset,y2_offset)
-            boxes = self.generate_bbox(cls_cls_map[:, :,1], reg, current_scale, self.thresh[0])
+            boxes = self.generate_bbox(prob[:, :,1], reg, current_scale, self.thresh[0])
             current_scale *= self.scale_factor
             im_resized = self.processed_image(im, current_scale)
             current_height, current_width, _ = im_resized.shape
 
-            if boxes.size == 0:
-                continue
+            if boxes.size == 0: continue
             keep = py_nms(boxes[:, :5], 0.5, 'Union')
             boxes = boxes[keep]
-            all_boxes.append(boxes)
+            total_boxes.append(boxes)
+            
 
-        if len(all_boxes) == 0:
-            return None, None, None
+        if len(total_boxes) == 0: return None
+        
+        total_boxes = np.vstack(total_boxes)        # shape (K, 9)
 
-        all_boxes = np.vstack(all_boxes)
+        keep = py_nms(total_boxes[:, 0:5], self.nms_pnet, 'Union')
+        total_boxes = total_boxes[keep]
+        boxes = total_boxes[:, :5]
 
-        # merge the detection from first stage
-        keep = py_nms(all_boxes[:, 0:5], self.nms_pnet, 'Union')
-        all_boxes = all_boxes[keep]
-        boxes = all_boxes[:, :5]
+        bbw = total_boxes[:, 2] - total_boxes[:, 0] + 1
+        bbh = total_boxes[:, 3] - total_boxes[:, 1] + 1
 
-        bbw = all_boxes[:, 2] - all_boxes[:, 0] + 1
-        bbh = all_boxes[:, 3] - all_boxes[:, 1] + 1
+        total_boxes = np.vstack([total_boxes[:, 0] + total_boxes[:, 5] * bbw,
+                             total_boxes[:, 1] + total_boxes[:, 6] * bbh,
+                             total_boxes[:, 2] + total_boxes[:, 7] * bbw,
+                             total_boxes[:, 3] + total_boxes[:, 8] * bbh,
+                             total_boxes[:, 4]])
 
-        # refine the boxes
-        boxes_c = np.vstack([all_boxes[:, 0] + all_boxes[:, 5] * bbw,
-                             all_boxes[:, 1] + all_boxes[:, 6] * bbh,
-                             all_boxes[:, 2] + all_boxes[:, 7] * bbw,
-                             all_boxes[:, 3] + all_boxes[:, 8] * bbh,
-                             all_boxes[:, 4]])
-        boxes_c = boxes_c.T
-
-        return boxes, boxes_c, None
+        return total_boxes.T
+        
+    # im shape (H, W, 3)
+    # dets shape (K, 5)
+    # boxes: shape (M, 5)
     def detect_rnet(self, im, dets):
-        """Get face candidates using rnet
-
-        Parameters:
-        ----------
-        im: numpy array
-            input image array
-        dets: numpy array
-            detection results of pnet
-
-        Returns:
-        -------
-        boxes: numpy array
-            detected boxes before calibration
-        boxes_c: numpy array
-            boxes after calibration
-        """
         h, w, c = im.shape
         dets = self.convert_to_square(dets)
         dets[:, 0:4] = np.round(dets[:, 0:4])
@@ -267,42 +235,32 @@ class MtcnnDetector(object):
             tmp = np.zeros((tmph[i], tmpw[i], 3), dtype=np.uint8)
             tmp[dy[i]:edy[i] + 1, dx[i]:edx[i] + 1, :] = im[y[i]:ey[i] + 1, x[i]:ex[i] + 1, :]
             cropped_ims[i, :, :, :] = (cv2.resize(tmp, (24, 24))-127.5) / 128
-        #cls_scores : num_data*2
-        #reg: num_data*4
-        #landmark: num_data*10
-        cls_scores, reg, _ = self.rnet_detector.predict(cropped_ims)
-        cls_scores = cls_scores[:,1]
-        keep_inds = np.where(cls_scores > self.thresh[1])[0]
-        if len(keep_inds) > 0:
-            boxes = dets[keep_inds]
-            boxes[:, 4] = cls_scores[keep_inds]
-            reg = reg[keep_inds]
-            #landmark = landmark[keep_inds]
-        else:
-            return None, None, None
-        
-        
-        keep = py_nms(boxes, self.nms_rnet)
-        boxes = boxes[keep]
-        boxes_c = self.calibrate_box(boxes, reg[keep])
-        return boxes, boxes_c, None
+
+
+        # cropped_ims       shape(K, 24, 24, 3)
+        # prob              shape(K, 2)
+        # reg               shape(K, 4)
+        prob, reg, _ = self.rnet_detector.predict(cropped_ims)
+        prob = prob[:,1]
+        passed = np.where(prob > self.thresh[1])[0]
+
+        if len(passed) == 0: return None
+
+        boxes = dets[passed]
+        boxes[:, 4] = prob[passed]
+        reg = reg[passed]
+   
+
+        pick = py_nms(boxes, self.nms_rnet)
+        boxes = boxes[pick]
+        boxes = self.calibrate_box(boxes, reg[pick])
+        return boxes
+    
+    # im:           shape (H, W, 3)
+    # dets:         shape (K, 5)
+    # boxes         shape (M, 5)
+    # landmark:     shape (M, 10)
     def detect_onet(self, im, dets):
-        """Get face candidates using onet
-
-        Parameters:
-        ----------
-        im: numpy array
-            input image array
-        dets: numpy array
-            detection results of rnet
-
-        Returns:
-        -------
-        boxes: numpy array
-            detected boxes before calibration
-        boxes_c: numpy array
-            boxes after calibration
-        """
         h, w, c = im.shape
         dets = self.convert_to_square(dets)
         dets[:, 0:4] = np.round(dets[:, 0:4])
@@ -314,18 +272,22 @@ class MtcnnDetector(object):
             tmp[dy[i]:edy[i] + 1, dx[i]:edx[i] + 1, :] = im[y[i]:ey[i] + 1, x[i]:ex[i] + 1, :]
             cropped_ims[i, :, :, :] = (cv2.resize(tmp, (48, 48))-127.5) / 128
             
-        cls_scores, reg, landmark = self.onet_detector.predict(cropped_ims)
-        #prob belongs to face
-        cls_scores = cls_scores[:,1]        
-        keep_inds = np.where(cls_scores > self.thresh[2])[0]        
-        if len(keep_inds) > 0:
-            #pickout filtered box
-            boxes = dets[keep_inds]
-            boxes[:, 4] = cls_scores[keep_inds]
-            reg = reg[keep_inds]
-            landmark = landmark[keep_inds]
-        else:
-            return None, None, None
+        
+        # cropped_ims       shape(K, 48, 48, 3)
+        # prob              shape(K, 2)
+        # reg               shape(K, 4)
+        # landmark          shape(K, 10)
+        prob, reg, landmark = self.onet_detector.predict(cropped_ims)
+        prob = prob[:,1]        
+        passed = np.where(prob > self.thresh[2])[0] 
+
+        if len(passed) == 0 : return None, None       
+
+        boxes = dets[passed]
+        boxes[:, 4] = prob[passed]
+        reg = reg[passed]
+        landmark = landmark[passed]
+       
         
         #width
         w = boxes[:,2] - boxes[:,0] + 1
@@ -333,73 +295,27 @@ class MtcnnDetector(object):
         h = boxes[:,3] - boxes[:,1] + 1
         landmark[:,0::2] = (np.tile(w,(5,1)) * landmark[:,0::2].T + np.tile(boxes[:,0],(5,1)) - 1).T
         landmark[:,1::2] = (np.tile(h,(5,1)) * landmark[:,1::2].T + np.tile(boxes[:,1],(5,1)) - 1).T        
-        boxes_c = self.calibrate_box(boxes, reg)
         
-        
-        boxes = boxes[py_nms(boxes, self.nms_onet, "Minimum")]
-        keep = py_nms(boxes_c, self.nms_onet, "Minimum")
-        boxes_c = boxes_c[keep]
-        landmark = landmark[keep]
-        return boxes, boxes_c,landmark
-        
+
+        boxes = self.calibrate_box(boxes, reg)
+        pick = py_nms(boxes, self.nms_onet, 'Minimum')
+        boxes = boxes[pick]
+        landmark = landmark[pick]
+        return boxes, landmark
+    
 
     def detect(self, img):
-        # pnet
-        if self.pnet_detector:
-            _, boxes_c,_ = self.detect_pnet(img)
-            if boxes_c is None:
-                return np.array([]),np.array([])
-        # rnet
-        if self.rnet_detector:
-            _, boxes_c,_ = self.detect_rnet(img, boxes_c)
-            if boxes_c is None:
-                return np.array([]),np.array([])
-    
-        # onet
-        if self.onet_detector:
-            _, boxes_c,landmark = self.detect_onet(img, boxes_c)
-            if boxes_c is None:
-                return np.array([]),np.array([])  
-        return boxes_c,landmark
-        
-    
-    def detect_face(self, test_data):
-        all_boxes = [] # save each image's bboxes
-        landmarks = []
-        batch_idx = 0
 
-        for databatch in tqdm(test_data):
-            im = databatch
-            # pnet
-            if self.pnet_detector:
-                #ignore landmark 
-                boxes, boxes_c, landmark = self.detect_pnet(im)
-                if boxes_c is None:
-                    all_boxes.append(np.array([]))
-                    landmarks.append(np.array([]))
-                    batch_idx += 1
-                    continue
-            # rnet
-            if self.rnet_detector:
-                #ignore landmark                 
-                _, boxes_c, landmark = self.detect_rnet(im, boxes_c)
-                if boxes_c is None:
-                    all_boxes.append(np.array([]))
-                    landmarks.append(np.array([]))
-                    batch_idx += 1
-                    continue
-            # onet
-            if self.onet_detector:
-                _, boxes_c, landmark = self.detect_onet(im, boxes_c)
-                if boxes_c is None:
-                    all_boxes.append(np.array([]))
-                    landmarks.append(np.array([]))                    
-                    batch_idx += 1
-                    continue
-                                                                          
-            all_boxes.append(boxes_c)
-            landmarks.append(landmark)
-            batch_idx += 1
-        #num_of_data*9,num_of_data*10
-        return all_boxes,landmarks
+        if self.pnet_detector:
+            boxes = self.detect_pnet(img)
+            if boxes is None: return np.array([]),np.array([])
+
+        if self.rnet_detector:
+            boxes = self.detect_rnet(img, boxes)
+            if boxes is None: return np.array([]),np.array([])
     
+        if self.onet_detector:
+            boxes,landmark = self.detect_onet(img, boxes)
+            if boxes is None: return np.array([]),np.array([])  
+        return boxes,landmark
+        
