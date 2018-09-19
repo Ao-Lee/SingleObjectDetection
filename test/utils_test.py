@@ -7,7 +7,7 @@ import cv2
 from tqdm import tqdm
 
 sys.path.append('..')
-from Detection.MtcnnDetector import MtcnnDetector
+from Detection.MtcnnDetector import MtcnnDetector, nms_mode
 from Detection.detector import Detector
 from Detection.fcn_detector import FcnDetector
 from core.model import P_Net, R_Net, O_Net
@@ -21,30 +21,38 @@ def GetModelPaths(path=cfg.path_output_models):
 
 
 def GetDetector(model_path,
-                thresh_p=0.5, 
-                thresh_r=0.66, 
-                thresh_o=0.29, 
-                min_face_size=25, 
-                scale_factor=0.79,
-                nms_pnet = 0.7,
-                nms_rnet = 0.6,
-                nms_onet = 0.6):
+                minsize = 20, 
+                factor = 0.709,
+                thresh_pred_p = 0.6, 
+                thresh_pred_r = 0.7, 
+                thresh_pred_o = 0.8, 
+                thresh_nms_p = 0.5,
+                thresh_nms_r = 0.7,
+                thresh_nms_o = 0.7,
+                mode_p = nms_mode['Union'],
+                mode_r = nms_mode['Union'],
+                mode_o = nms_mode['Minimum'],
+                thresh_merge = 0.7,
+                mode_merge = nms_mode['Union'],
+                ):
     
     paths = GetModelPaths(model_path)
-    thresh=[thresh_p, thresh_r, thresh_o]
     detectors = [None, None, None]
     detectors[0] = FcnDetector(P_Net, paths[0])
     detectors[1] = Detector(R_Net, 24, 1, paths[1])
     detectors[2] = Detector(O_Net, 48, 1, paths[2])
-    mtcnn_detector = MtcnnDetector(detectors=detectors, 
-                                   min_face_size=min_face_size, 
-                                   stride=2, 
-                                   threshold=thresh, 
-                                   scale_factor=scale_factor,
-                                   nms_pnet=nms_pnet,
-                                   nms_rnet=nms_rnet,
-                                   nms_onet=nms_onet)
-    return mtcnn_detector
+    
+    detector = MtcnnDetector(               
+                            detectors = detectors,
+                            minsize = minsize,
+                            factor = factor,
+                            thresh_prediction = [thresh_pred_p, thresh_pred_r, thresh_pred_o],
+                            thresh_nms = [thresh_nms_p, thresh_nms_r, thresh_nms_o],
+                            modes = [mode_p, mode_r, mode_o],
+                            thresh_merge = thresh_merge,
+                            mode_merge = mode_merge
+                            )
+    return detector
     
 def File2GroundTruthInfo(path_labels):
     gt_info = {}
@@ -78,13 +86,8 @@ def ResizedDetect(detector, img):
     dim = (int(w/scale), int(h/scale))
     img_resized = cv2.resize(img, dim, interpolation=cv2.INTER_LINEAR)
     bboxes_pred, _ = detector.detect(img_resized)
-    
-    if bboxes_pred.shape[0] == 0:
-        return bboxes_pred
-    else:
-        
-        bboxes_pred[:,:-1]*=scale
-        return bboxes_pred  
+    bboxes_pred[:,:-1]*=scale
+    return bboxes_pred  
     
 def GetPredictionInfo(detector, path_imgs):
     def pack(bboxes_pred, file_id):

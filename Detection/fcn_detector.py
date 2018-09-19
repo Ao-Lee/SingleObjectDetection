@@ -11,8 +11,6 @@ class FcnDetector(object):
             image_reshape = tf.reshape(self.image_op, [1, self.height_op, self.width_op, 3])  
             self.prob, self.reg, _ = net(image_reshape, training=False)
             
-            
-            
             self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=tf.GPUOptions(allow_growth=True)))
             saver = tf.train.Saver()
             model_folder = '\\'.join(model_path.split('\\')[:-1])

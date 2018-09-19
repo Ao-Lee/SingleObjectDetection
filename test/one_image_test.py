@@ -83,6 +83,6 @@ if __name__=='__main__':
     img = cv2.imread(path_img)
     bboxes = content[1:]
     bboxes = np.array(bboxes, dtype=np.int).reshape(-1, 4)
-    bboxes_pred, landmarks_pred = detector.detect(img)
+    total_boxes, points = detector.detect(img)
     
 
