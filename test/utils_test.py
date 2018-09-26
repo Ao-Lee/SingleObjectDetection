@@ -111,3 +111,26 @@ def GetPredictionInfo(detector, path_imgs):
         result = pack(bboxes_pred, filename)
         info += result
     return info
+    
+def GetBestHyperParam_HighWay():
+    kwargs = {}
+
+    kwargs['factor'] = 0.906
+    kwargs['minsize'] = 28
+    
+    kwargs['thresh_pred_p'] = 0.177
+    kwargs['thresh_pred_r'] = 0.345
+    kwargs['thresh_pred_o'] = 0.335
+    
+    kwargs['thresh_nms_p'] = 0.643
+    kwargs['thresh_nms_r'] = 0.729
+    kwargs['thresh_nms_o'] = 0.536
+    
+    kwargs['mode_p'] = nms_mode['Minimum']
+    kwargs['mode_r'] = nms_mode['Union']
+    kwargs['mode_o'] = nms_mode['Minimum']
+    
+    kwargs['thresh_merge'] = 0.809
+    kwargs['mode_merge'] = nms_mode['Union']
+    
+    return kwargs

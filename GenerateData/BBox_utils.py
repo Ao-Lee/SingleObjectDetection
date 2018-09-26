@@ -1,7 +1,6 @@
 # coding: utf-8
 
 import os
-from os.path import join, exists
 import time
 import cv2
 import numpy as np
